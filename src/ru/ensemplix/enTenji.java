@@ -22,7 +22,7 @@ public class enTenji {
 
 	private static final Logger logger = Logger.getLogger("enTenji");
 
-	private static final String VERSION = "0.1";
+	private static final String VERSION = "1.1";
 	private static final String ACCESS_TOKEN = "";
 	private static final String USER_ID = "";
 
@@ -127,7 +127,7 @@ public class enTenji {
 						}
 
 						try {
-							TimeUnit.SECONDS.sleep(10);
+							TimeUnit.SECONDS.sleep(3);
 						} catch (InterruptedException e) {
 							logger.log(Level.WARNING, "InterruptedException", e);
 						}
