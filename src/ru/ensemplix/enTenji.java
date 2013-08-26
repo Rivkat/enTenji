@@ -1,32 +1,23 @@
 package ru.ensemplix;
 
-import java.io.InputStream;
-import java.net.URI;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.util.EntityUtils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
+
+import ru.ensemplix.api.BanApi;
+import ru.ensemplix.api.CommentDeleteApi;
+import ru.ensemplix.api.CommentsApi;
+import ru.ensemplix.api.PostsApi;
+import ru.ensemplix.api.UserApi;
 
 public class enTenji {
 
 	private static final Logger logger = Logger.getLogger("enTenji");
 
-	private static final String VERSION = "1.1";
-	private static final String ACCESS_TOKEN = "";
-	private static final String USER_ID = "";
-
-	private HttpClient httpclient = new DefaultHttpClient();
+	private static final String VERSION = "1.2";
 
 	public static void main(String[] args) {
 		BotLogger botLogger = new BotLogger();
@@ -38,29 +29,28 @@ public class enTenji {
 
 	public void start() {
 		logger.info("Starting enTenji " + VERSION);
-
+		
 		while (true) {
 			try {
-				JSONObject wallMessages = getWallMessages();
+				
+				PostsApi posts = new PostsApi();
+				posts.execute();
+				JSONArray wallMessages = posts.result();
 
-				if (wallMessages.containsKey("response")) {
-					JSONArray wallMessagesArray = (JSONArray) wallMessages
-							.get("response");
-
-					for (int i = 1; i < wallMessagesArray.size(); i++) {
-						JSONObject wallPost = (JSONObject) wallMessagesArray
-								.get(i);
+				if (wallMessages != null) {
+					for (int i = 1; i < wallMessages.size(); i++) {
+						JSONObject wallPost = (JSONObject) wallMessages.get(i);
 
 						String postId = String.valueOf(wallPost.get("id"));
 
-						JSONObject wallComments = getWallComments(postId);
+						CommentsApi comments = new CommentsApi();
+						comments.setId(postId);
+						comments.execute();
 
-						if (wallComments.containsKey("response")) {
-							JSONArray wallCommentsArray = (JSONArray) wallComments
-									.get("response");
-
-							for (int e = 1; e < wallCommentsArray.size(); e++) {
-								JSONObject wallComment = (JSONObject) wallCommentsArray
+						JSONArray wallComments = comments.result();
+						if (wallComments != null) {
+							for (int e = 1; e < wallComments.size(); e++) {
+								JSONObject wallComment = (JSONObject) wallComments
 										.get(e);
 
 								String commentId = String.valueOf(wallComment
@@ -70,198 +60,104 @@ public class enTenji {
 								String text = String.valueOf(wallComment
 										.get("text"));
 
-								if (Abuse.containsAbuse(text)) {
-									deleteComment(commentId);
-									ban(userId, 1440, "Мат [Tenji]");
+								Abuse abuse = new Abuse(text);
 
-									JSONObject userObject = getUser(userId);
+								if (abuse.containsAbuse()) {
 
-									JSONArray userArray = (JSONArray) userObject
-											.get("response");
+									CommentDeleteApi commentDelete = new CommentDeleteApi();
+									commentDelete.setId(commentId);
+									commentDelete.execute();
 
-									JSONObject user = (JSONObject) userArray
-											.get(0);
+									BanApi ban = new BanApi(userId, 1440,
+											"Мат [Tenji]");
+									ban.execute();
 
-									logger.info("Banned "
-											+ user.get("first_name") + " "
-											+ user.get("last_name") + " for `"
-											+ text + "` (abuse)");
-								} else if (Abuse.containsYoutube(text)) {
-									deleteComment(commentId);
-									ban(userId, 1440, "YouTube ссылка [Tenji]");
+									UserApi user = new UserApi();
+									user.setId(userId);
+									user.execute();
 
-									JSONObject userObject = getUser(userId);
+									String name = user.getName();
+									String lastName = user.getLastName();
 
-									JSONArray userArray = (JSONArray) userObject
-											.get("response");
+									logger.info("Banned " + name + " "
+											+ lastName + " for `" + text
+											+ "` (abuse)");
+								} else if (abuse.containsYoutube()) {
 
-									JSONObject user = (JSONObject) userArray
-											.get(0);
+									CommentDeleteApi commentDelete = new CommentDeleteApi();
+									commentDelete.setId(commentId);
+									commentDelete.execute();
 
-									logger.info("Banned "
-											+ user.get("first_name") + " "
-											+ user.get("last_name") + " for `"
-											+ text + "` (youtube link)");
-								} else if (Abuse.containsIp(text)) {
-									deleteComment(commentId);
-									ban(userId, 1440,
-											"Реклама серверов [Tenji]");
+									BanApi ban = new BanApi(userId, 1440,
+											"Ссылка на youtube [Tenji]");
+									ban.execute();
 
-									JSONObject userObject = getUser(userId);
+									UserApi user = new UserApi();
+									user.setId(userId);
+									user.execute();
 
-									JSONArray userArray = (JSONArray) userObject
-											.get("response");
+									String name = user.getName();
+									String lastName = user.getLastName();
 
-									JSONObject user = (JSONObject) userArray
-											.get(0);
+									logger.info("Banned " + name + " "
+											+ lastName + " for `" + text
+											+ "` (youtube link)");
+								} else if (abuse.containsIp()) {
 
-									logger.info("Banned "
-											+ user.get("first_name") + " "
-											+ user.get("last_name") + " for `"
-											+ text + "` (server ads)");
+									CommentDeleteApi commentDelete = new CommentDeleteApi();
+									commentDelete.setId(commentId);
+									commentDelete.execute();
+
+									BanApi ban = new BanApi(userId, 90 * 1440,
+											"Реклама сервера [Tenji]");
+									ban.execute();
+
+									UserApi user = new UserApi();
+									user.setId(userId);
+									user.execute();
+
+									String name = user.getName();
+									String lastName = user.getLastName();
+
+									logger.info("Banned " + name + " "
+											+ lastName + " for `" + text
+											+ "` (server ads)");
+								} else if (abuse.containsVkGroupURL()) {
+
+									CommentDeleteApi commentDelete = new CommentDeleteApi();
+									commentDelete.setId(commentId);
+									commentDelete.execute();
+
+									BanApi ban = new BanApi(userId, 90 * 1440,
+											"Реклама группы [Tenji]");
+									ban.execute();
+
+									UserApi user = new UserApi();
+									user.setId(userId);
+									user.execute();
+
+									String name = user.getName();
+									String lastName = user.getLastName();
+
+									logger.info("Banned " + name + " "
+											+ lastName + " for `" + text
+											+ "` (vk group url)");
 								}
 							}
-						} else if (wallComments.containsKey("error")) {
-							logger.warning("VK API Comments Error: "
-									+ wallComments.get("error"));
-						}
-
-						try {
-							TimeUnit.SECONDS.sleep(3);
-						} catch (InterruptedException e) {
-							logger.log(Level.WARNING, "InterruptedException", e);
+							
+							try {
+								TimeUnit.SECONDS.sleep(2);
+							} catch (InterruptedException e) {
+								logger.log(Level.WARNING, "InterruptedException", e);
+							}
+							
 						}
 					}
-				} else if (wallMessages.containsKey("error")) {
-					logger.warning("VK API Messages Error: "
-							+ wallMessages.get("error"));
 				}
 			} catch (Exception e) {
 				logger.log(Level.WARNING, "Exception", e);
 			}
-
-			try {
-				TimeUnit.MINUTES.sleep(3);
-			} catch (InterruptedException e) {
-				logger.log(Level.WARNING, "InterruptedException", e);
-			}
 		}
-	}
-	
-	public JSONObject getWallMessages() throws Exception {
-		URIBuilder builder = new URIBuilder();
-		builder.setScheme("https").setHost("api.vk.com")
-				.setPath("/method/wall.get")
-				.setParameter("oid", USER_ID)
-				.setParameter("owner_id", "-30508451")
-				.setParameter("count", "10")
-				.setParameter("access_token", ACCESS_TOKEN);
-		URI uri = builder.build();
-
-		HttpGet httpget = new HttpGet(uri);
-		HttpResponse response = httpclient.execute(httpget);
-		HttpEntity entity = response.getEntity();
-
-		if (entity != null) {
-			InputStream instream = entity.getContent();
-			JSONParser parser = new JSONParser();
-			JSONObject jsonResponse = (JSONObject) parser.parse(IOUtils
-					.toString(instream));
-			EntityUtils.consume(entity);
-			return jsonResponse;
-		}
-
-		return null;
-	}
-	
-	public JSONObject getWallComments(String postId) throws Exception {
-		URIBuilder builder = new URIBuilder();
-		builder.setScheme("https").setHost("api.vk.com")
-				.setPath("/method/wall.getComments")
-				.setParameter("oid", USER_ID)
-				.setParameter("post_id", postId)
-				.setParameter("owner_id", "-30508451")
-				.setParameter("count", "100")
-				.setParameter("sort", "desc")
-				.setParameter("access_token", ACCESS_TOKEN);
-		URI uri = builder.build();
-
-		HttpGet httpget = new HttpGet(uri);
-		HttpResponse response = httpclient.execute(httpget);
-		HttpEntity entity = response.getEntity();
-
-		if (entity != null) {
-			InputStream instream = entity.getContent();
-			JSONParser parser = new JSONParser();
-			JSONObject jsonResponse = (JSONObject) parser.parse(IOUtils
-					.toString(instream));
-			EntityUtils.consume(entity);
-			return jsonResponse;
-		}
-
-		return null;
-	}
-	
-	public void deleteComment(String commentId) throws Exception {
-		
-		URIBuilder builder = new URIBuilder();
-		builder.setScheme("https").setHost("api.vk.com")
-				.setPath("/method/wall.deleteComment")
-				.setParameter("oid", USER_ID)
-				.setParameter("owner_id", "-30508451")
-				.setParameter("comment_id", commentId)
-				.setParameter("count", "10")
-				.setParameter("access_token", ACCESS_TOKEN);
-		URI uri = builder.build();
-
-		HttpGet httpget = new HttpGet(uri);
-		HttpResponse response = httpclient.execute(httpget);
-		HttpEntity entity = response.getEntity();
-		EntityUtils.consume(entity);
-	}
-	
-	public void ban(String userId, long till, String reason) throws Exception {
-		till *= 60;
-		till += System.currentTimeMillis() / 1000L;
-
-		URIBuilder builder = new URIBuilder();
-		builder.setScheme("https").setHost("api.vk.com")
-				.setPath("/method/groups.banUser").setParameter("oid", USER_ID)
-				.setParameter("group_id", "30508451")
-				.setParameter("user_id", userId)
-				.setParameter("comment", reason)
-				.setParameter("end_date", String.valueOf(till))
-				.setParameter("comment_visible", "1")
-				.setParameter("access_token", ACCESS_TOKEN);
-		URI uri = builder.build();
-
-		HttpGet httpget = new HttpGet(uri);
-		HttpResponse response = httpclient.execute(httpget);
-		HttpEntity entity = response.getEntity();
-		EntityUtils.consume(entity);
-	}
-	
-	public JSONObject getUser(String userId) throws Exception {
-		URIBuilder builder = new URIBuilder();
-		builder.setScheme("https").setHost("api.vk.com")
-				.setPath("/method/users.get")
-				.setParameter("user_ids", userId);
-		URI uri = builder.build();
-
-		HttpGet httpget = new HttpGet(uri);
-		HttpResponse response = httpclient.execute(httpget);
-		HttpEntity entity = response.getEntity();
-
-		if (entity != null) {
-			InputStream instream = entity.getContent();
-			JSONParser parser = new JSONParser();
-			JSONObject jsonResponse = (JSONObject) parser.parse(IOUtils
-					.toString(instream));
-			EntityUtils.consume(entity);
-			return jsonResponse;
-		}
-
-		return null;
 	}
 
 }
